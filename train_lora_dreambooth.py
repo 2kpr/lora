@@ -62,6 +62,7 @@ class DreamBoothDataset(Dataset):
         size=512,
         center_crop=False,
         color_jitter=False,
+        image_captions=False,
     ):
         self.size = size
         self.center_crop = center_crop
@@ -75,6 +76,7 @@ class DreamBoothDataset(Dataset):
         self.num_instance_images = len(self.instance_images_path)
         self.instance_prompt = instance_prompt
         self._length = self.num_instance_images
+        self.image_captions = image_captions
 
         if class_data_root is not None:
             self.class_data_root = Path(class_data_root)
@@ -107,14 +109,15 @@ class DreamBoothDataset(Dataset):
 
     def __getitem__(self, index):
         example = {}
-        instance_image = Image.open(
-            self.instance_images_path[index % self.num_instance_images]
-        )
+        image_path = self.instance_images_path[index % self.num_instance_images]
+        instance_image = Image.open(image_path)
+        instance_prompt = image_path.stem.split('.')[0] if self.image_captions else self.instance_prompt
+        
         if not instance_image.mode == "RGB":
             instance_image = instance_image.convert("RGB")
         example["instance_images"] = self.image_transforms(instance_image)
         example["instance_prompt_ids"] = self.tokenizer(
-            self.instance_prompt,
+            instance_prompt,
             padding="do_not_pad",
             truncation=True,
             max_length=self.tokenizer.model_max_length,
@@ -225,6 +228,15 @@ def parse_args(input_args=None):
         help=(
             "Minimal class images for prior preservation loss. If not have enough images, additional images will be"
             " sampled with class_prompt."
+        ),
+    )
+    parser.add_argument(
+        "--image_captions",
+        default=False,
+        action="store_true",
+        help=(
+            "The instance prompt is set on a per image basis and the caption is taken from each image's filename by"
+            " using all the text before the first '.' in each image's filename."
         ),
     )
     parser.add_argument(
@@ -651,6 +663,7 @@ def main(args):
         size=args.resolution,
         center_crop=args.center_crop,
         color_jitter=args.color_jitter,
+        image_captions=args.image_captions,
     )
 
     def collate_fn(examples):
